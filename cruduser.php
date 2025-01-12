@@ -33,7 +33,7 @@ if (isset($_POST['update_user'])) {
     $id = $_POST['id'];
     $username = $_POST['username'];
     $password = password_hash($_POST['password'], PASSWORD_DEFAULT); // Enkripsi password
-    $foto = $_FILES['foto']['name']; // Foto user
+    //$foto = $_FILES['foto']['name']; // Foto user
     
     // Mengupload foto
     $target_dir = "uploads/";
