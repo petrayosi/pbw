@@ -7,43 +7,28 @@ include "koneksi.php";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
   $username = $_POST['username'];
-  
-  //menggunakan fungsi enkripsi md5 supaya sama dengan password  yang tersimpan di database
-  $password = md5($_POST['password']);
+  $password = $_POST['password']; // Kata sandi asli tanpa hash
 
-	//prepared statement
-  $stmt = $conn->prepare("SELECT username 
-                          FROM user 
-                          WHERE username=? AND password=?");
-
-	//parameter binding 
-  $stmt->bind_param("ss", $username, $password);//username string dan password string
-  
-  //database executes the statement
+  // Query untuk mendapatkan hash kata sandi dari database
+  $stmt = $conn->prepare("SELECT username, password FROM user WHERE username=?");
+  $stmt->bind_param("s", $username);
   $stmt->execute();
-  
-  //menampung hasil eksekusi
   $hasil = $stmt->get_result();
-  
-  //mengambil baris dari hasil sebagai array asosiatif
-  $row = $hasil->fetch_array(MYSQLI_ASSOC);
+  $row = $hasil->fetch_assoc();
 
-  //check apakah ada baris hasil data user yang cocok
-  if (!empty($row)) {
-    //jika ada, simpan variable username pada session
-    $_SESSION['username'] = $row['username'];
-
-    //mengalihkan ke halaman admin
-    header("location:admin.php");
+  if ($row && password_verify($password, $row['password'])) {
+      // Jika kata sandi benar
+      $_SESSION['username'] = $row['username'];
+      header("location:admin.php");
   } else {
-	  //jika tidak ada (gagal), alihkan kembali ke halaman login
-    header("location:login.php");
+      // Jika kata sandi salah
+      header("location:login.php");
   }
 
-	//menutup koneksi database
   $stmt->close();
   $conn->close();
-} else {
+}
+else {
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -96,24 +81,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         </div>
       </div>
     </div>
-
-    <?php
-    // Username dan password yang valid
-    $username = "admin";
-    $password = "123456";
-
-    // Proses login jika form dikirimkan
-    if ($_SERVER["REQUEST_METHOD"] == "POST") {
-        // Validasi input login
-        if ($_POST['username'] == $username && $_POST['password'] == $password) {
-            // Jika login berhasil, arahkan ke halaman beranda atau dashboard
-            header("Location: home.php"); // Ganti 'home.php' dengan halaman tujuan Anda
-            exit(); // Pastikan tidak ada kode lain yang dijalankan setelah pengalihan
-        } else {
-            echo "<div class='alert alert-danger text-center mt-3'>Username dan Password Salah</div>";
-        }
-    }
-    ?>
 
     <script
       src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
