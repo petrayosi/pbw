@@ -7,45 +7,89 @@ if (!isset($_SESSION['username'])) {
     header("location:login.php"); 
     exit();
 }
-
-// Menangani operasi CRUD: Create, Update, Delete
-// CREATE: Menambah user baru
+// Create User
 if (isset($_POST['create_user'])) {
-    $username = $_POST['username'];
-    $password = password_hash($_POST['password'], PASSWORD_DEFAULT); // Enkripsi password
-    $foto = $_FILES['foto']['name']; // Foto user
+    $username = trim($_POST['username']);
     
-    // Mengupload foto
-    $target_dir = "uploads/";
-    $target_file = $target_dir . basename($_FILES["foto"]["name"]);
-    move_uploaded_file($_FILES["foto"]["tmp_name"], $target_file);
-
-    $sql = "INSERT INTO user (username, password, foto) VALUES ('$username', '$password', '$foto')";
-    if ($conn->query($sql) === TRUE) {
-        echo "User berhasil ditambahkan.";
+    // Check if username already exists
+    $check_stmt = $conn->prepare("SELECT id FROM user WHERE username = ?");
+    $check_stmt->bind_param("s", $username);
+    $check_stmt->execute();
+    $result = $check_stmt->get_result();
+    
+    if ($result->num_rows > 0) {
+        $_SESSION['error'] = "Username already exists";
     } else {
-        echo "Error: " . $conn->error;
+        $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
+        $foto = $_FILES['foto']['name'];
+        
+        // Validate image
+        $target_dir = "uploads/";
+        $target_file = $target_dir . basename($foto);
+        $imageFileType = strtolower(pathinfo($target_file, PATHINFO_EXTENSION));
+        
+        $allowed_types = ['jpg', 'png', 'jpeg', 'gif'];
+        if (in_array($imageFileType, $allowed_types)) {
+            if (move_uploaded_file($_FILES["foto"]["tmp_name"], $target_file)) {
+                $stmt = $conn->prepare("INSERT INTO user (username, password, foto) VALUES (?, ?, ?)");
+                $stmt->bind_param("sss", $username, $password, $foto);
+                
+                if ($stmt->execute()) {
+                    $_SESSION['success'] = "User successfully created";
+                } else {
+                    $_SESSION['error'] = "Error creating user: " . $conn->error;
+                }
+                $stmt->close();
+            } else {
+                $_SESSION['error'] = "Failed to upload image";
+            }
+        } else {
+            $_SESSION['error'] = "Only image files are allowed";
+        }
     }
+    $check_stmt->close();
 }
 
-// UPDATE: Mengupdate data user
 if (isset($_POST['update_user'])) {
     $id = $_POST['id'];
-    $username = $_POST['username'];
-    $password = password_hash($_POST['password'], PASSWORD_DEFAULT); // Enkripsi password
-    //$foto = $_FILES['foto']['name']; // Foto user
+    $username = trim($_POST['username']);
     
-    // Mengupload foto
-    $target_dir = "uploads/";
-    $target_file = $target_dir . basename($_FILES["foto"]["name"]);
-    move_uploaded_file($_FILES["foto"]["tmp_name"], $target_file);
-
-    $sql = "UPDATE user SET username = '$username', password = '$password', foto = '$foto' WHERE id = $id";
-    if ($conn->query($sql) === TRUE) {
-        echo "User berhasil diupdate.";
-    } else {
-        echo "Error: " . $conn->error;
+    // Ambil data lama user
+    $stmt = $conn->prepare("SELECT foto FROM user WHERE id = ?");
+    $stmt->bind_param("i", $id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $user = $result->fetch_assoc();
+    $foto = $user['foto'];
+    
+    // Cek apakah ada file baru untuk foto
+    if (!empty($_FILES['foto']['name'])) {
+        $new_foto = $_FILES['foto']['name'];
+        $target_dir = "uploads/";
+        $target_file = $target_dir . basename($new_foto);
+        if (move_uploaded_file($_FILES["foto"]["tmp_name"], $target_file)) {
+            $foto = $new_foto;
+        }
     }
+    
+    // Update user
+    if (!empty($_POST['password'])) {
+        // Jika password baru disediakan
+        $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
+        $update_stmt = $conn->prepare("UPDATE user SET username = ?, password = ?, foto = ? WHERE id = ?");
+        $update_stmt->bind_param("sssi", $username, $password, $foto, $id);
+    } else {
+        // Jika password tidak diubah
+        $update_stmt = $conn->prepare("UPDATE user SET username = ?, foto = ? WHERE id = ?");
+        $update_stmt->bind_param("ssi", $username, $foto, $id);
+    }
+
+    if ($update_stmt->execute()) {
+        $_SESSION['success'] = "User berhasil diupdate.";
+    } else {
+        $_SESSION['error'] = "Terjadi kesalahan saat mengupdate user.";
+    }
+    $update_stmt->close();
 }
 
 // DELETE: Menghapus data user
@@ -155,34 +199,36 @@ $hasil = $conn->query($sql);
                     </tr>
 
                     <!-- Modal Edit -->
-                    <div class="modal fade" id="editModal<?php echo $user['id']; ?>" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
-                        <div class="modal-dialog">
-                            <div class="modal-content">
-                                <div class="modal-header">
-                                    <h5 class="modal-title" id="editModalLabel">Edit User</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                </div>
-                                <div class="modal-body">
-                                    <form method="POST" enctype="multipart/form-data">
-                                        <input type="hidden" name="id" value="<?php echo $user['id']; ?>">
-                                        <div class="mb-3">
-                                            <label for="username" class="form-label">Username</label>
-                                            <input type="text" class="form-control" name="username" value="<?php echo $user['username']; ?>" required>
-                                        </div>
-                                        <div class="mb-3">
-                                            <label for="password" class="form-label">Password</label>
-                                            <input type="password" class="form-control" name="password" value="<?php echo $user['password']; ?>" required>
-                                        </div>
-                                        <div class="mb-3">
-                                            <label for="foto" class="form-label">Foto</label>
-                                            <input type="file" class="form-control" name="foto">
-                                        </div>
-                                        <button type="submit" name="update_user" class="btn btn-primary">Update</button>
-                                    </form>
-                                </div>
-                            </div>
-                        </div>
+                    <!-- Modal Edit -->
+<div class="modal fade" id="editModal<?php echo $user['id']; ?>" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editModalLabel">Edit User</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="id" value="<?php echo $user['id']; ?>">
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Username</label>
+                        <input type="text" class="form-control" name="username" value="<?php echo $user['username']; ?>" required>
                     </div>
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Password (Kosongkan jika tidak ingin diubah)</label>
+                        <input type="password" class="form-control" name="password">
+                    </div>
+                    <div class="mb-3">
+                        <label for="foto" class="form-label">Foto</label>
+                        <input type="file" class="form-control" name="foto">
+                    </div>
+                    <button type="submit" name="update_user" class="btn btn-primary">Update</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
                 <?php } ?>
             </tbody>
         </table>
